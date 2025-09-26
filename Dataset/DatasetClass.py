@@ -23,7 +23,8 @@ class quarkGluonEvent(Dataset):
     
     def __getitem__(self, idx):
         X = torch.tensor(self.X_jets[idx], dtype=torch.float32)
-        y = torch.tensor(self.y_labels[idx], dtype=torch.long)
+        X = X.permute(2, 0, 1)
+        y = torch.tensor(int(self.y_labels[idx]), dtype=torch.long)
         m0 = torch.tensor(self.m0[idx], dtype=torch.float32)
         pt = torch.tensor(self.pt[idx], dtype=torch.float32)
         
