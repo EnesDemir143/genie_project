@@ -1,0 +1,85 @@
+import torch
+import torch.nn as nn
+import math
+
+def create_conv3d_blocks(in_ch, base, layer_count, k=3, s=2, p=1):
+    layer = nn.Sequential()
+    for i in range(layer_count):
+        in_c  = in_ch if i == 0 else base * (2 ** (i - 1))
+        out_c = base * (2 ** i)
+        layer.add_module(f'conv3d_{i+1}', nn.Conv3d(in_c, out_c, kernel_size=k, stride=s, padding=p, bias=False))
+        layer.add_module(f'batchnorm3d_{i+1}', nn.BatchNorm3d(out_c))
+        layer.add_module(f'relu_{i+1}', nn.ReLU(inplace=True))
+    layer.add_module('gap', nn.AdaptiveAvgPool3d((1, 1, 1)))
+    return layer
+
+def create_deconv3d_block(start_ch, base, layer_count, k=4, s=2, p=1):
+
+    layers = nn.Sequential()
+    for i in range(layer_count):
+        in_c  = base * (2 ** (layer_count - 1 - i))
+        out_c = base * (2 ** (layer_count - 2 - i)) if i < layer_count - 1 else base
+        if i == 0 and in_c != start_ch:
+            in_c = start_ch
+        layers.add_module(f'deconv3d_{i+1}', nn.ConvTranspose3d(in_c, out_c, kernel_size=k, stride=s, padding=p, bias=False))
+        layers.add_module(f'batchnorm3d_{i+1}', nn.BatchNorm3d(out_c))
+        layers.add_module(f'relu_{i+1}', nn.ReLU(inplace=True))
+    return layers
+
+class Encoder3D(nn.Module):
+    def __init__(self, in_channels: int, input_shape: tuple, latent_dim: int, base: int = 32, layer_count: int = 4):
+        super().__init__()
+        C, D, H, W = input_shape
+        assert C == in_channels, "input_shape[0] and in_channels should be same."
+        must = 2 ** layer_count
+        assert (D, H, W) == (must, must, must), f"D=H=W must be {must} when using GAP with layer_count={layer_count}."
+
+        self.enc = create_conv3d_blocks(in_channels, base, layer_count)
+
+        # After GAP  (C_L, 1, 1, 1)
+        last_ch = base * (2 ** (layer_count - 1))
+        dL = hL = wL = 1
+        self._feat_shape = (last_ch, dL, hL, wL)
+        self.fc = nn.Linear(last_ch * dL * hL * wL, latent_dim)
+
+    def forward(self, x):
+        x = self.enc(x)          # (N, last_ch, 1,1,1)
+        x = x.flatten(1)         # (N, last_ch)
+        z = self.fc(x)           # (N, latent_dim)
+        return z
+
+class Decoder3D(nn.Module):
+    def __init__(self, out_channels: int, feat_shape: tuple, latent_dim: int, base: int = 32, layer_count: int = 4):
+        super().__init__()
+        cL, dL, hL, wL = feat_shape         # (last_ch, 1,1,1)
+        self.fc = nn.Linear(latent_dim, cL * dL * hL * wL)
+
+        self.dec = create_deconv3d_block(start_ch=cL, base=base, layer_count=layer_count)
+
+        self.to_out = nn.Sequential(
+            nn.Conv3d(base, out_channels, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.Sigmoid() 
+        )
+        self._feat_shape = feat_shape
+
+    def forward(self, z):
+        x = self.fc(z)                         # (N, cL)
+        cL, dL, hL, wL = self._feat_shape
+        x = x.view(-1, cL, dL, hL, wL)        # (N, cL, 1,1,1)
+        x = self.dec(x)                        # (N, base, 2^L, 2^L, 2^L)
+        x = self.to_out(x)                     # (N, out_channels, 2^L, 2^L, 2^L)
+        return x
+
+class AutoEncoder3D(nn.Module):
+    def __init__(self, input_shape: tuple, latent_dim: int, base: int = 32, layer_count: int = 4):
+        super().__init__()
+        in_ch = input_shape[0]
+        self.encoder = Encoder3D(in_channels=in_ch, input_shape=input_shape,
+                                 latent_dim=latent_dim, base=base, layer_count=layer_count)
+        self.decoder = Decoder3D(out_channels=in_ch, feat_shape=self.encoder._feat_shape,
+                                 latent_dim=latent_dim, base=base, layer_count=layer_count)
+
+    def forward(self, x):
+        z = self.encoder(x)
+        out = self.decoder(z)
+        return out
