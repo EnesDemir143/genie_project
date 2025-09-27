@@ -1,32 +1,30 @@
 import h5py
 import os
 import torch
-from torch.utils.data.dataset import Dataset
-
+from torch.utils.data import Dataset
 
 class quarkGluonEvent(Dataset):
-    def __init__(self, DatasetPath):
+    def __init__(self, DatasetPath, transform=None):
         self.dataset_path = DatasetPath
-        
+        self.transform = transform
         if not os.path.exists(self.dataset_path):
-            raise FileNotFoundError(f"The dataset path {self.dataset_path} does not exist.")
-        else:
-            with h5py.File(self.dataset_path, 'r') as f:
-                self.X_jets = f['X_jets'][:]
-                self.y_labels = f['y'][:]
-                self.m0 = f['m0'][:]
-                self.pt = f['pt'][:]
-                print(f"Loaded dataset with {len(self.X_jets)} samples.")
+            raise FileNotFoundError(f"{self.dataset_path} not found.")
         
+        with h5py.File(self.dataset_path, 'r') as f:
+            assert len(f['X_jets']) == len(f['y']) == len(f['m0']) == len(f['pt']), "Dataset arrays must have the same length."
+            self.length = len(f['X_jets'])
+
     def __len__(self):
-        return len(self.X_jets)
-    
+        return self.length
+
     def __getitem__(self, idx):
-        X = torch.tensor(self.X_jets[idx], dtype=torch.float32)
-        X = X.permute(2, 0, 1)
-        y = torch.tensor(int(self.y_labels[idx]), dtype=torch.long)
-        m0 = torch.tensor(self.m0[idx], dtype=torch.float32)
-        pt = torch.tensor(self.pt[idx], dtype=torch.float32)
-        
- 
+        with h5py.File(self.dataset_path, 'r') as f:
+            if self.transform:
+                X = torch.tensor(f['X_jets'][idx], dtype=torch.float32).permute(2,0,1)  
+                X = self.transform(X)
+            else:
+                X = torch.tensor(f['X_jets'][idx], dtype=torch.float32).permute(2,0,1)  
+            y = torch.tensor(int(f['y'][idx]), dtype=torch.long)
+            m0 = torch.tensor(f['m0'][idx], dtype=torch.float32)
+            pt = torch.tensor(f['pt'][idx], dtype=torch.float32)
         return X, y, m0, pt
