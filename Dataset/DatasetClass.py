@@ -4,9 +4,10 @@ import torch
 from torch.utils.data import Dataset
 
 class quarkGluonEvent(Dataset):
-    def __init__(self, DatasetPath, transform=None):
+    def __init__(self, DatasetPath, transform=None, include_others=False):
         self.dataset_path = DatasetPath
         self.transform = transform
+        self.include_others = include_others
         if not os.path.exists(self.dataset_path):
             raise FileNotFoundError(f"{self.dataset_path} not found.")
         
@@ -19,12 +20,15 @@ class quarkGluonEvent(Dataset):
 
     def __getitem__(self, idx):
         with h5py.File(self.dataset_path, 'r') as f:
+            X = torch.tensor(f['X_jets'][idx], dtype=torch.float32).permute(2,0,1)      
             if self.transform:
-                X = torch.tensor(f['X_jets'][idx], dtype=torch.float32).permute(2,0,1)  
                 X = self.transform(X)
+                
+            if self.include_others:
+                y = torch.tensor(int(f['y'][idx]), dtype=torch.long)
+                m0 = torch.tensor(f['m0'][idx], dtype=torch.float32)
+                pt = torch.tensor(f['pt'][idx], dtype=torch.float32)
+                
+                return X, y, m0, pt
             else:
-                X = torch.tensor(f['X_jets'][idx], dtype=torch.float32).permute(2,0,1)  
-            y = torch.tensor(int(f['y'][idx]), dtype=torch.long)
-            m0 = torch.tensor(f['m0'][idx], dtype=torch.float32)
-            pt = torch.tensor(f['pt'][idx], dtype=torch.float32)
-        return X, y, m0, pt
+                return X, None, None, None

@@ -9,7 +9,6 @@ def create_conv2d_blocks(in_ch, base, layer_count, k=3, s=2, p=1):
         layer.add_module(f'conv2d_{i+1}', nn.Conv2d(in_c, out_c, kernel_size=k, stride=s, padding=p, bias=False))
         layer.add_module(f'batchnorm2d_{i+1}', nn.BatchNorm2d(out_c))
         layer.add_module(f'relu_{i+1}', nn.ReLU(inplace=True))
-    layer.add_module('gap', nn.AdaptiveAvgPool2d((1, 1)))
     return layer
 
 def create_deconv2d_block(start_ch, base, layer_count, k=4, s=2, p=1):
@@ -25,47 +24,50 @@ def create_deconv2d_block(start_ch, base, layer_count, k=4, s=2, p=1):
     return layers
 
 class Encoder2D(nn.Module):
-    def __init__(self, in_channels: int, input_shape: tuple, latent_dim: int, base: int = 32, layer_count: int = 4):
+    def __init__(self, in_channels: int, input_shape: tuple, latent_dim: int, base: int = 32, layer_count: int = 4,
+                 k=3, s=2, p=1):
         super().__init__()
         C, H, W = input_shape
         assert C == in_channels, "input_shape[0] and in_channels should be same."
-        must = 2 ** layer_count
-        assert (H, W) == (must, must), f"H=W must be {must} when using GAP with layer_count={layer_count}."
 
-        self.enc = create_conv2d_blocks(in_channels, base, layer_count)
+        self.enc = create_conv2d_blocks(in_channels, base, layer_count, k=k, s=s, p=p)
 
-        # After GAP  (C_L, 1, 1)
+        hL, wL = H, W
+        for _ in range(layer_count):
+            hL = (hL + 2*p - k) // s + 1
+            wL = (wL + 2*p - k) // s + 1
+
         last_ch = base * (2 ** (layer_count - 1))
-        hL = wL = 1
         self._feat_shape = (last_ch, hL, wL)
         self.fc = nn.Linear(last_ch * hL * wL, latent_dim)
 
     def forward(self, x):
-        x = self.enc(x)          # (N, last_ch, 1,1)
-        x = x.flatten(1)         # (N, last_ch)
-        z = self.fc(x)           # (N, latent_dim)
+        x = self.enc(x)                  # (N, last_ch, hL, wL)
+        x = x.flatten(1)                 # (N, last_ch*hL*wL)
+        z = self.fc(x)                   # (N, latent_dim)
         return z
+
 
 class Decoder2D(nn.Module):
     def __init__(self, out_channels: int, feat_shape: tuple, latent_dim: int, base: int = 32, layer_count: int = 4):
         super().__init__()
-        cL, hL, wL = feat_shape         # (last_ch, 1,1)
+        cL, hL, wL = feat_shape
         self.fc = nn.Linear(latent_dim, cL * hL * wL)
 
         self.dec = create_deconv2d_block(start_ch=cL, base=base, layer_count=layer_count)
 
         self.to_out = nn.Sequential(
             nn.Conv2d(base, out_channels, kernel_size=1, stride=1, padding=0, bias=True),
-            nn.Sigmoid() 
+            nn.Sigmoid()
         )
         self._feat_shape = feat_shape
 
     def forward(self, z):
-        x = self.fc(z)                         # (N, cL)
+        x = self.fc(z)
         cL, hL, wL = self._feat_shape
-        x = x.view(-1, cL, hL, wL)             # (N, cL, 1,1)
-        x = self.dec(x)                        # (N, base, 2^L, 2^L)
-        x = self.to_out(x)                     # (N, out_channels, 2^L, 2^L)
+        x = x.view(-1, cL, hL, wL)      # artık (N, cL, hL, wL)
+        x = self.dec(x)
+        x = self.to_out(x)
         return x
 
 class AutoEncoder2D(nn.Module):
