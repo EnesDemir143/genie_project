@@ -62,7 +62,7 @@ def train_autoencoder(model, train_loader, val_loader, device, loss_fn, optimize
         app_logger.info(f"\nEpoch {epoch+1}/{EPOCHS}")
         app_logger.info("-" * 15)
         
-        for inputs, _, _, _ in tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Training", leave=False):
+        for inputs in tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Training", leave=False):
             inputs = inputs.to(device)
             outputs = model(inputs)
             
@@ -95,7 +95,7 @@ def train_autoencoder(model, train_loader, val_loader, device, loss_fn, optimize
         model.eval()
         val_running_loss = 0.0
         with torch.no_grad():
-            for inputs, _, _, _ in tqdm(val_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Validation", leave=False):
+            for inputs in tqdm(val_loader, desc=f"Epoch {epoch+1}/{EPOCHS} - Validation", leave=False):
                 inputs = inputs.to(device)
                 outputs = model(inputs)
                                 

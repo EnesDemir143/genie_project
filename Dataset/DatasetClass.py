@@ -1,34 +1,38 @@
 import h5py
-import os
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, get_worker_info
+import torch.nn.functional as F
 
-class quarkGluonEvent(Dataset):
-    def __init__(self, DatasetPath, transform=None, include_others=False):
-        self.dataset_path = DatasetPath
+class ResizeTensor:
+    def __init__(self, size):
+        self.size = size
+    def __call__(self, tensor):
+        return F.interpolate(
+            tensor.unsqueeze(0), size=self.size, mode='bilinear', align_corners=False
+        ).squeeze(0)
+
+
+
+class QuarkGluonEvent(Dataset):
+    def __init__(self, dataset_path, transform=None, include_others=False):
+        self.dataset_path = dataset_path
         self.transform = transform
         self.include_others = include_others
-        if not os.path.exists(self.dataset_path):
-            raise FileNotFoundError(f"{self.dataset_path} not found.")
-        
-        with h5py.File(self.dataset_path, 'r') as f:
-            assert len(f['X_jets']) == len(f['y']) == len(f['m0']) == len(f['pt']), "Dataset arrays must have the same length."
-            self.length = len(f['X_jets'])
+        with h5py.File(dataset_path, 'r') as f:
+            self.X_jets = torch.tensor(f['X_jets'][:], dtype=torch.float32).permute(0, 3, 1, 2) 
+            self.length = len(self.X_jets)
+            if include_others:
+                self.y = torch.tensor(f['y'][:], dtype=torch.long)
+                self.m0 = torch.tensor(f['m0'][:], dtype=torch.float32)
+                self.pt = torch.tensor(f['pt'][:], dtype=torch.float32)
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, idx):
-        with h5py.File(self.dataset_path, 'r') as f:
-            X = torch.tensor(f['X_jets'][idx], dtype=torch.float32).permute(2,0,1)      
-            if self.transform:
-                X = self.transform(X)
-                
-            if self.include_others:
-                y = torch.tensor(int(f['y'][idx]), dtype=torch.long)
-                m0 = torch.tensor(f['m0'][idx], dtype=torch.float32)
-                pt = torch.tensor(f['pt'][idx], dtype=torch.float32)
-                
-                return X, y, m0, pt
-            else:
-                return X, None, None, None
+        X = self.X_jets[idx]
+        if self.transform:
+            X = self.transform(X)
+        if self.include_others:
+            return X, self.y[idx], self.m0[idx], self.pt[idx]
+        return X

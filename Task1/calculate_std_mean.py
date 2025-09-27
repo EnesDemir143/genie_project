@@ -10,7 +10,7 @@ def calculate_std_mean(dataloader):
     total_sq_sum = 0.0
     
     with torch.no_grad():
-        for data, _, _, _ in tqdm(dataloader, total=len(dataloader), desc="Batches"):
+        for data in tqdm(dataloader, total=len(dataloader), desc="Batches"):
             N, C, H, W = data.shape
             num = N * H * W   
 
