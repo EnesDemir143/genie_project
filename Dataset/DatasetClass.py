@@ -7,10 +7,14 @@ class ResizeTensor:
     def __init__(self, size):
         self.size = size
     def __call__(self, tensor):
-        return F.interpolate(
-            tensor.unsqueeze(0), size=self.size, mode='bilinear', align_corners=False
-        ).squeeze(0)
-
+        if tensor.dim() == 3:  # (C,H,W)
+            tensor = tensor.unsqueeze(0)  # (1,C,H,W)
+            out = F.interpolate(tensor, size=self.size, mode='bilinear', align_corners=False)
+            return out.squeeze(0)  # (C,H,W)
+        elif tensor.dim() == 4:  # (N,C,H,W)
+            return F.interpolate(tensor, size=self.size, mode='bilinear', align_corners=False)
+        else:
+            raise ValueError(f"Unexpected tensor shape: {tensor.shape}")
 
 
 class QuarkGluonEvent(Dataset):
