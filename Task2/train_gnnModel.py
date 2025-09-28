@@ -98,7 +98,7 @@ def train_model(model, data_loader, validation_loader, device, loss_fn, optimize
             data = data.to(device)
             labels = data.y.to(device).float()
 
-            predictions = model(data.x, data.edge_index, data.batch, getattr(data, "edge_attr", None))
+            predictions = model(data)
             predictions =predictions.squeeze()
             probs_train = torch.sigmoid(predictions)
 
@@ -135,7 +135,7 @@ def train_model(model, data_loader, validation_loader, device, loss_fn, optimize
                 val_data = val_data.to(device) 
                 val_labels = val_data.y.to(device).float()
                 
-                val_predictions = model(val_data.x, val_data.edge_index, val_data.batch, getattr(val_data, "edge_attr", None))
+                val_predictions = model(val_data)
                 val_predictions = val_predictions.squeeze()
                 val_loss = loss_fn(val_predictions, val_labels.float())
                 total_val_loss += val_loss.item()
