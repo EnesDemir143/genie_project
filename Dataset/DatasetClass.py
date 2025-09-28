@@ -22,7 +22,7 @@ class QuarkGluonEvent(Dataset):
             self.X_jets = torch.tensor(f['X_jets'][:], dtype=torch.float32).permute(0, 3, 1, 2) 
             self.length = len(self.X_jets)
             if include_others:
-                self.y = torch.tensor(f['y'][:], dtype=torch.long)
+                self.y = torch.tensor(int(f['y'][:]), dtype=torch.long)
                 self.m0 = torch.tensor(f['m0'][:], dtype=torch.float32)
                 self.pt = torch.tensor(f['pt'][:], dtype=torch.float32)
 
